@@ -1,0 +1,52 @@
+# config.yaml —— langchain-chat 全局业务配置
+
+# 多环境扩展点（REQ-001 / Step 15）：
+#   本文件是「基础配置」，所有环境共享。
+#   未来通过 config.{env}.yaml（dev/test/prod）做「覆盖」，合并机制为：
+#       最终配置 = config.yaml（基础）+ config.{APP_ENV}.yaml（覆盖）
+#   当前阶段单环境运行，app.env 留空注释。
+
+# 应用元信息
+app:
+  name: langchain-chat
+  version: 0.1.0
+  # env: dev   # 多环境预留，Step 15 启用
+
+# 模型配置（API_BASE_URL/API_KEY/MODEL_NAME 真实值在 .env 中）
+models:
+  default: deepseek-chat
+  available:
+    - name: DeepSeek Chat
+      value: deepseek-chat
+    - name: DeepSeek Reasoner
+      value: deepseek-reasoner
+  temperature: 0.7
+  max_tokens: 2048
+
+# 存储配置
+storage:
+  type: sqlite
+  sqlite:
+    path: data/sqlite/app.db
+  mysql:
+    host: localhost
+    port: 3306
+    user: root
+    database: langchain_chat
+    # password 从 .env 的 MYSQL_PASSWORD 读取
+  file:
+    path: data/filestore
+
+# LLM 调用参数（需求 G1 超时与重试）
+llm:
+  timeout: 30
+  max_retries: 3
+
+# 会话配置（需求 C7 会话标题自动生成）
+session:
+  title_max_length: 30
+
+# 导出配置（需求 F2）
+export:
+  dir: data/users/{username}/exports
+  filename_template: "{title}_{date}.md"
