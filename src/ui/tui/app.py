@@ -1,233 +1,102 @@
-from __future__ import annotations
+"""TUI 主应用（菜单路由、状态管理）。
 
-from dataclasses import dataclass, field
-from datetime import datetime
-from enum import StrEnum
-from uuid import uuid4
+这是 TUI 的主入口，负责：
+    1. 显示启动横幅。
+    2. 显示主菜单并路由到对应视图。
+    3. 维护主循环（直到用户选择退出）。
 
-from prompt_toolkit.application import Application
-from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.filters import Condition
-from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import HSplit, Layout, Window
-from prompt_toolkit.layout.controls import FormattedTextControl
-from prompt_toolkit.styles import Style
-from prompt_toolkit.widgets import Frame, TextArea
+TUIApp 继承 AbstractUI，实现其全部抽象方法，满足 UI 接口契约。
+"""
 
-from src.interface.ui_protocol import AbstractUI
-from src.models.schemas import Message, Session, User
-from src.ui.tui.chat_view import render_chat_view
-from src.ui.tui.menu_view import render_menu_view
-from src.ui.tui.widgets import build_footer, build_header, build_settings_view
+import platform
 
+from interface.ui_protocol import AbstractUI
+from ui.tui import menu_view, widgets
+from ui.tui.chat_view import start_chat
 
-class Route(StrEnum):
-    MENU = "menu"
-    CHAT = "chat"
-    SETTINGS = "settings"
-
-
-@dataclass
-class AppState:
-    route: Route = Route.MENU
-    status: str = "ready"
-    user: User = field(
-        default_factory=lambda: User(username="guest", email="guest@example.com")
-    )
-    session: Session = field(
-        default_factory=lambda: Session(
-            session_id=uuid4().hex,
-            user=User(username="guest", email="guest@example.com"),
-        )
-    )
-    messages: list[Message] = field(default_factory=list)
-    selected_menu_index: int = 0
-
-    def add_message(self, sender: str, content: str) -> Message:
-        message = Message(
-            message_id=uuid4().hex,
-            session_id=self.session.session_id,
-            sender=sender,
-            content=content,
-            timestamp=datetime.now().isoformat(timespec="seconds"),
-        )
-        self.messages.append(message)
-        return message
+# 主菜单选项（序号与选项的对应关系）
+MAIN_MENU_OPTIONS = [
+    "用户管理",
+    "会话管理",
+    "预设管理",
+    "开始对话",
+    "设置",
+    "关于",
+    "退出",
+]
 
 
-class TUIApplication(AbstractUI):
+class TUIApp(AbstractUI):
+    """TUI 主应用。
+
+    继承 AbstractUI 并实现其全部抽象方法。
+    """
+
     def __init__(self) -> None:
-        self.state = AppState()
-        self._menu_items: list[tuple[str, Route]] = [
-            ("Chat", Route.CHAT),
-            ("Settings", Route.SETTINGS),
-            ("Exit", Route.MENU),
-        ]
-        self._input = TextArea(
-            height=3,
-            prompt="You> ",
-            multiline=False,
-            wrap_lines=True,
-        )
-        self._input.accept_handler = self._handle_submit
-        self._header = Window(
-            content=FormattedTextControl(text=self._render_header),
-            height=3,
-            always_hide_cursor=True,
-        )
-        self._body = Window(
-            content=FormattedTextControl(text=self._render_body),
-            always_hide_cursor=True,
-            wrap_lines=True,
-        )
-        self._footer = Window(
-            content=FormattedTextControl(text=self._render_footer),
-            height=1,
-            always_hide_cursor=True,
-        )
-        self._app: Application | None = None
+        # 应用状态（当前用户、当前会话等，后续步骤扩展）
+        self.current_user = None
+        self.current_session = None
 
-    def _build_application(self) -> Application:
-        bindings = KeyBindings()
+    # ── AbstractUI 接口实现 ───────────────────────────────────────────────
 
-        menu_active = Condition(lambda: self.state.route == Route.MENU)
-        not_menu = Condition(lambda: self.state.route != Route.MENU)
-
-        @bindings.add("c-c")
-        @bindings.add("q")
-        def _quit(event) -> None:
-            event.app.exit()
-
-        @bindings.add("escape", filter=not_menu)
-        def _back(event) -> None:
-            self.go_to(Route.MENU)
-
-        @bindings.add("1", filter=menu_active)
-        def _menu_one(event) -> None:
-            self.go_to(Route.CHAT)
-
-        @bindings.add("2", filter=menu_active)
-        def _menu_two(event) -> None:
-            self.go_to(Route.SETTINGS)
-
-        @bindings.add("3", filter=menu_active)
-        def _menu_three(event) -> None:
-            self.state.status = "exit requested"
-            event.app.exit()
-
-        root = HSplit(
-            [
-                self._header,
-                Frame(body=self._body, title="Main View"),
-                Frame(body=self._input, title="Input"),
-                self._footer,
-            ]
-        )
-
-        return Application(
-            layout=Layout(root, focused_element=self._input),
-            key_bindings=bindings,
-            full_screen=True,
-            style=self._style(),
-        )
-
-    def _style(self) -> Style:
-        return Style.from_dict(
-            {
-                "frame.label": "bold",
-                "textarea": "bg:#0b1220 #f8fafc",
-            }
-        )
-
-    def _console_width(self) -> int:
-        if self._app is None:
-            return 88
-        return max(40, self._app.output.get_size().columns - 4)
-
-    def _render_header(self):
-        return build_header(self.state.route.value, self.state.status, self._console_width())
-
-    def _render_body(self):
-        if self.state.route == Route.CHAT:
-            return render_chat_view(self.state.messages, self._console_width())
-        if self.state.route == Route.SETTINGS:
-            return build_settings_view(
-                self.state.user.username,
-                self.state.user.email,
-                self.state.session.session_id,
-                len(self.state.messages),
-                self._console_width(),
-            )
-        return render_menu_view(self._console_width())
-
-    def _render_footer(self):
-        return build_footer(self._console_width())
-
-    def _handle_submit(self, buffer: Buffer) -> bool:
-        text = buffer.text.strip()
-        if not text:
-            return False
-
-        buffer.text = ""
-
-        if self.state.route == Route.MENU:
-            self._dispatch_menu_command(text)
-        elif self.state.route == Route.CHAT:
-            self.state.add_message("user", text)
-            self.state.add_message("assistant", f"Echo: {text}")
-            self.state.status = "message received"
+    async def display_message(self, role: str, content: str) -> None:
+        """显示一条消息。"""
+        if role == "human":
+            widgets.console.print(f"[bold cyan][你][/] {content}")
+        elif role == "ai":
+            widgets.console.print(f"[bold green][AI][/] {content}")
         else:
-            self.state.status = text
+            widgets.console.print(f"[dim][系统][/] {content}")
 
-        self._invalidate()
-        return True
+    async def get_user_input(self, prompt_text: str = "") -> str:
+        """获取用户输入。"""
+        return widgets.read_text(prompt_text)
 
-    def _dispatch_menu_command(self, text: str) -> None:
-        command = text.lower()
-        if command in {"1", "chat"}:
-            self.go_to(Route.CHAT)
-            return
-        if command in {"2", "settings"}:
-            self.go_to(Route.SETTINGS)
-            return
-        if command in {"3", "exit", "quit"}:
-            self.state.status = "exit requested"
-            if self._app is not None:
-                self._app.exit()
-            return
-        self.state.status = f"unknown command: {text}"
+    async def display_menu(self, title: str, options: list[str]) -> int:
+        """显示菜单并获取选择。"""
+        widgets.print_menu(title, options)
+        return widgets.read_choice(len(options))
 
-    def _invalidate(self) -> None:
-        if self._app is not None:
-            self._app.invalidate()
+    async def display_error(self, message: str) -> None:
+        """显示错误。"""
+        widgets.print_error(message)
 
-    def go_to(self, route: Route) -> None:
-        self.state.route = route
-        self.state.status = f"routed to {route.value}"
-        self._invalidate()
+    async def display_info(self, message: str) -> None:
+        """显示提示。"""
+        widgets.print_info(message)
 
-    def display_message(self, message: str) -> None:
-        self.state.add_message("system", message)
-        self.state.status = message
-        self._invalidate()
+    # ── 主循环 ────────────────────────────────────────────────────────────
 
-    def get_user_input(self, prompt: str) -> str:
-        self.display_message(prompt)
-        return self._input.text.strip()
+    async def run(self) -> None:
+        """启动 TUI 主循环。
 
-    def run(self) -> None:
-        if self._app is None:
-            self._app = self._build_application()
-        self._app.run()
+        流程：打印横幅 → 显示主菜单 → 读取选择 → 路由 → 循环。
+        """
+        # 1. 打印启动横幅
+        widgets.print_banner(version="0.1.0", python_version=platform.python_version())
 
+        # 2. 主循环
+        while True:
+            # 显示主菜单
+            choice = await self.display_menu("主菜单", MAIN_MENU_OPTIONS)
 
-def create_app() -> TUIApplication:
-    return TUIApplication()
-
-
-def main() -> None:
-    create_app().run()
-
-
-if __name__ == "__main__":
-    main()
+            # 路由到对应视图
+            if choice == -1:
+                # 用户输入 0（返回上层），在主菜单中等同于不做操作
+                continue
+            elif choice == 0:
+                menu_view.show_user_menu()
+            elif choice == 1:
+                menu_view.show_session_menu()
+            elif choice == 2:
+                menu_view.show_preset_menu()
+            elif choice == 3:
+                await start_chat()
+            elif choice == 4:
+                menu_view.show_settings_menu()
+            elif choice == 5:
+                menu_view.show_about()
+            elif choice == 6:
+                # 退出
+                widgets.print_info("感谢使用，再见。")
+                break

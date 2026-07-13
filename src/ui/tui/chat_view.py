@@ -1,27 +1,13 @@
-from __future__ import annotations
+"""对话视图（骨架）。
 
-from src.models.schemas import Message
-from rich.box import ROUNDED
-from rich.panel import Panel
-from rich.table import Table
+本步骤只占位，真实对话功能（流式输出、Token 统计、多轮交互）在 Step 7 实现。
+对应需求文档 A1 至 A5（核心对话功能）。
+"""
 
-from src.ui.tui.widgets import render_to_ansi
+from ui.tui import widgets
 
 
-def render_chat_view(messages: list[Message], width: int) -> object:
-    table = Table(box=ROUNDED, expand=True)
-    table.add_column("Time", style="dim", width=19)
-    table.add_column("Sender", style="cyan", width=10)
-    table.add_column("Message", style="white")
-    if messages:
-        for message in messages[-20:]:
-            table.add_row(message.timestamp, message.sender, message.content)
-    else:
-        table.add_row("-", "-", "No messages yet. Type below and press Enter.")
-    body = Panel(
-        table,
-        title="Chat History",
-        border_style="green",
-        padding=(0, 1),
-    )
-    return render_to_ansi(body, width)
+async def start_chat() -> None:
+    """启动对话（桩）。Step 7 实现真实的流式多轮对话。"""
+    widgets.print_info("对话功能将在 Step 7 实现（核心里程碑）")
+    widgets.print_divider()

@@ -1,24 +1,53 @@
-from __future__ import annotations
+"""菜单视图。
 
-from rich.box import ROUNDED
-from rich.panel import Panel
-from rich.table import Table
+负责显示各个菜单并处理用户选择。
+本步骤（Step 2）所有菜单选项的功能都是桩函数（stub），
+只显示提示信息，不执行真实业务逻辑。
+真实功能在后续步骤逐步实现：
+    - 用户管理：Step 4
+    - 预设管理：Step 5
+    - 会话管理与对话：Step 7
+    - 设置：Step 10
+"""
 
-from src.ui.tui.widgets import render_to_ansi
+from ui.tui import widgets
 
 
-def render_menu_view(width: int) -> object:
-    table = Table(title="Menu", box=ROUNDED, expand=True)
-    table.add_column("Key", style="cyan", width=8)
-    table.add_column("Action", style="white")
-    table.add_column("Hint", style="dim")
-    table.add_row("1", "Chat", "Open the chat room")
-    table.add_row("2", "Settings", "Inspect current session")
-    table.add_row("3", "Exit", "Close the app")
-    body = Panel(
-        table,
-        title="Main Menu",
-        border_style="magenta",
-        padding=(0, 1),
+def show_user_menu() -> None:
+    """用户管理菜单（桩）。Step 4 实现。"""
+    widgets.print_info("用户管理功能将在 Step 4 实现")
+    widgets.print_divider()
+
+
+def show_session_menu() -> None:
+    """会话管理菜单（桩）。Step 7/8 实现。"""
+    widgets.print_info("会话管理功能将在 Step 7、Step 8 实现")
+    widgets.print_divider()
+
+
+def show_preset_menu() -> None:
+    """预设管理菜单（桩）。Step 5 实现。"""
+    widgets.print_info("预设管理功能将在 Step 5 实现")
+    widgets.print_divider()
+
+
+def show_settings_menu() -> None:
+    """设置菜单（桩）。Step 10 实现。"""
+    widgets.print_info("设置功能将在 Step 10 实现")
+    widgets.print_divider()
+
+
+def show_chat_view() -> None:
+    """对话视图（桩）。Step 7 实现。"""
+    widgets.print_info("对话功能将在 Step 7 实现（核心里程碑）")
+    widgets.print_divider()
+
+
+def show_about() -> None:
+    """显示关于信息。"""
+    widgets.console.print(
+        "\n[bold cyan]LangChain Chat[/bold cyan]  "
+        "基于 LangChain 的多轮会话系统（教学项目）\n"
+        "[dim]按步骤开发中，当前进度：Step 2  TUI 骨架[/dim]\n"
     )
-    return render_to_ansi(body, width)
+    widgets.print_divider()

@@ -1,68 +1,106 @@
-from __future__ import annotations
+"""TUI 复用组件（样式、格式化、工具函数）。
 
-from io import StringIO
+本模块封装 rich 的渲染能力，提供全站统一的样式。
+其他 TUI 文件（menu_view、chat_view、app）都调用这里的函数。
 
-from prompt_toolkit.formatted_text import ANSI
-from rich.align import Align
-from rich.box import ROUNDED
+设计原则（DRY）：把样式集中在 widgets.py，改样式只改一处，全站生效。
+"""
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
 
-def render_to_ansi(renderable, width: int) -> ANSI:
-    buffer = StringIO()
-    console = Console(
-        file=buffer,
-        force_terminal=True,
-        color_system="truecolor",
-        width=width,
-        legacy_windows=False,
-    )
-    console.print(renderable, end="")
-    return ANSI(buffer.getvalue())
+# 全局 Console 实例（所有 TUI 文件共用，保证输出一致）
+console = Console()
 
 
-def build_header(route: str, status: str, width: int) -> ANSI:
-    title = Text("Chat Bot TUI", style="bold cyan")
-    meta = Text()
-    meta.append(" route=", style="dim")
-    meta.append(route, style="yellow")
-    meta.append(" | status=", style="dim")
-    meta.append(status, style="green")
-    panel = Panel(
-        Align.left(Text.assemble(title, "\n", meta)),
-        box=ROUNDED,
-        border_style="cyan",
-        padding=(0, 1),
-    )
-    return render_to_ansi(panel, width)
+def print_banner(version: str, python_version: str) -> None:
+    """打印启动横幅。
+
+    参数：
+        version: 应用版本号
+        python_version: Python 版本号
+    """
+    banner_text = Text()
+    banner_text.append("LangChain Chat", style="bold cyan")
+    banner_text.append(f"  v{version}", style="dim")
+    banner_text.append(f"\nPython {python_version}", style="green")
+    banner_text.append("\n当前进度：Step 2  数据模型与 TUI 骨架", style="yellow")
+
+    console.print(Panel(banner_text, border_style="cyan", title="欢迎", title_align="left"))
 
 
-def build_footer(width: int) -> ANSI:
-    footer = Text()
-    footer.append("ESC", style="bold")
-    footer.append(" back  ", style="dim")
-    footer.append("q", style="bold")
-    footer.append(" quit  ", style="dim")
-    footer.append("1/2/3", style="bold")
-    footer.append(" menu shortcuts", style="dim")
-    return render_to_ansi(footer, width)
+def print_info(message: str) -> None:
+    """打印普通提示信息（蓝色）。"""
+    console.print(f"[blue][信息][/] {message}")
 
 
-def build_settings_view(user: str, email: str, session_id: str, message_count: int, width: int) -> ANSI:
-    table = Table(box=ROUNDED, expand=True)
-    table.add_column("Field", style="cyan", width=18)
-    table.add_column("Value", style="white")
-    table.add_row("User", user)
-    table.add_row("Email", email)
-    table.add_row("Session", session_id)
-    table.add_row("Messages", str(message_count))
-    body = Panel(
-        table,
-        title="Settings",
-        border_style="yellow",
-        padding=(0, 1),
-    )
-    return render_to_ansi(body, width)
+def print_success(message: str) -> None:
+    """打印成功信息（绿色）。"""
+    console.print(f"[bold green][成功][/] {message}")
+
+
+def print_error(message: str) -> None:
+    """打印错误信息（红色加粗）。"""
+    console.print(f"[bold red][错误][/] {message}")
+
+
+def print_warning(message: str) -> None:
+    """打印警告信息（黄色）。"""
+    console.print(f"[yellow][警告][/] {message}")
+
+
+def print_menu(title: str, options: list[str]) -> None:
+    """打印菜单（带标题和编号选项）。
+
+    参数：
+        title: 菜单标题
+        options: 选项文本列表
+    """
+    table = Table(title=title, show_header=True, border_style="cyan", expand=True)
+    table.add_column("序号", style="bold yellow", width=6)
+    table.add_column("选项", style="white")
+
+    for index, option in enumerate(options, start=1):
+        table.add_row(str(index), option)
+
+    console.print(table)
+
+
+def print_divider() -> None:
+    """打印分隔线。"""
+    console.print("[dim]" + "-" * 60 + "[/]")
+
+
+def read_choice(max_choice: int) -> int:
+    """读取用户选择的菜单序号，返回从 0 开始的索引。
+
+    参数：
+        max_choice: 最大有效序号（选项总数）
+    返回：
+        用户选择的索引（0 到 max_choice-1）
+    """
+    while True:
+        try:
+            raw = input(f"请输入序号 (1-{max_choice})，或 0 返回上层: ").strip()
+            choice = int(raw)
+            if choice == 0:
+                return -1                    # -1 表示返回上层
+            if 1 <= choice <= max_choice:
+                return choice - 1            # 转为 0 基索引
+            print_error(f"序号超出范围，请输入 0 到 {max_choice} 之间的数字")
+        except ValueError:
+            print_error("请输入数字")
+
+
+def read_text(prompt_text: str) -> str:
+    """读取用户输入的文本。
+
+    参数：
+        prompt_text: 提示文字
+    返回：
+        用户输入的文本（已去除首尾空白）
+    """
+    return input(f"{prompt_text}: ").strip()
