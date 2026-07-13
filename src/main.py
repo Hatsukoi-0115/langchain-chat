@@ -1,6 +1,6 @@
 """langchain-chat 程序总入口。
 
-Step 2 阶段：加载配置，启动 TUI 主界面。
+Step 4 阶段：加载配置、初始化存储后端、启动 TUI 主界面。
 运行方式：uv run python src/main.py
 """
 
@@ -16,24 +16,34 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 async def async_main() -> None:
     """异步主函数。
 
-    后续步骤会在此函数中按顺序执行：
+    启动流程（Step 4 起）：
         1. 加载配置（config_manager）
-        2. 初始化存储后端（Step 3 起）
-        3. 启动 TUI 主循环
-    当前 Step 2 阶段：加载配置 + 启动 TUI。
+        2. 初始化存储后端（根据 config.storage_type 创建并 initialize）
+        3. 启动 TUI 主循环（把存储后端注入 TUIApp）
     """
     # 1. 加载配置（触发单例创建，读取 .env 与 config.yaml）
     from core.config_manager import get_config
 
     config = get_config()
-    # 暂时只用打印验证配置加载成功，后续步骤会用 config 初始化存储等
     print(f"[启动] 存储后端: {config.storage_type}，默认模型: {config.default_model}")
 
-    # 2. 启动 TUI 主循环
+    # 2. 初始化存储后端
+    from storage.factory import StorageFactory
+
+    backend = StorageFactory.create(config.storage_type)
+    await backend.initialize()
+    print(f"[启动] 存储后端已就绪: {type(backend).__name__}")
+
+    # 3. 启动 TUI 主循环（注入存储后端）
     from ui.tui.app import TUIApp
 
-    app = TUIApp()
-    await app.run()
+    try:
+        app = TUIApp(backend=backend)
+        await app.run()
+    finally:
+        # 无论正常退出还是异常，都关闭存储后端连接
+        await backend.close()
+        print("[启动] 存储后端已关闭")
 
 
 def main() -> None:
