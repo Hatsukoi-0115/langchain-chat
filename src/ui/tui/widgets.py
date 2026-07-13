@@ -16,18 +16,20 @@ from rich.text import Text
 console = Console()
 
 
-def print_banner(version: str, python_version: str) -> None:
+def print_banner(version: str, python_version: str, current_step: str = "") -> None:
     """打印启动横幅。
 
     参数：
         version: 应用版本号
         python_version: Python 版本号
+        current_step: 当前进度文字（从配置读取，方案 B）
     """
     banner_text = Text()
     banner_text.append("LangChain Chat", style="bold cyan")
     banner_text.append(f"  v{version}", style="dim")
     banner_text.append(f"\nPython {python_version}", style="green")
-    banner_text.append("\n当前进度：Step 5  预设管理", style="yellow")
+    if current_step:
+        banner_text.append(f"\n当前进度：{current_step}", style="yellow")
 
     console.print(Panel(banner_text, border_style="cyan", title="欢迎", title_align="left"))
 

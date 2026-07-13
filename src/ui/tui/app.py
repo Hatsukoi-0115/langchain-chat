@@ -132,7 +132,11 @@ class TUIApp(AbstractUI):
         流程：打印横幅 → 显示主菜单 → 读取选择 → 路由 → 循环。
         """
         # 1. 打印启动横幅
-        widgets.print_banner(version="0.1.0", python_version=platform.python_version())
+        widgets.print_banner(
+            version="0.1.0",
+            python_version=platform.python_version(),
+            current_step=get_config().current_step,
+        )
 
         # 2. 主循环
         while True:

@@ -68,6 +68,11 @@ class AppConfig:
     # ── 业务配置访问方法 ──────────────────────────────────────────────────
 
     @property
+    def current_step(self) -> str:
+        """当前开发步骤（横幅显示用，方案 B：从配置读取）。"""
+        return self._yaml_config.get("app", {}).get("current_step", "开发中")
+
+    @property
     def storage_type(self) -> str:
         """存储后端类型（sqlite / mysql / file）。"""
         return self._yaml_config.get("storage", {}).get("type", "sqlite")
@@ -81,6 +86,16 @@ class AppConfig:
     def available_models(self) -> list[dict[str, str]]:
         """可选模型列表。"""
         return self._yaml_config.get("models", {}).get("available", [])
+
+    @property
+    def temperature(self) -> float:
+        """生成温度（创造性程度，范围 0 到 2。0=最确定，2=最随机，本项目默认 0.7）。"""
+        return self._yaml_config.get("models", {}).get("temperature", 0.7)
+
+    @property
+    def max_tokens(self) -> int:
+        """单次回复最大 token 数。"""
+        return self._yaml_config.get("models", {}).get("max_tokens", 2048)
 
     @property
     def llm_timeout(self) -> int:
