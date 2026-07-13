@@ -268,9 +268,17 @@ class SQLiteBackend(StorageBackend):
 
     # ── 预设相关 ──────────────────────────────────────────────────────────
 
+    async def get_preset_by_id(self, preset_id: int) -> Optional[Preset]:
+        """按 ID 查询单个预设（含内置和所有用户的自定义）。不存在返回 None。"""
+        async with self._conn.execute(
+            "SELECT * FROM presets WHERE id = ?", (preset_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return self._row_to_preset(row) if row else None
+
     async def save_preset(self, preset: Preset) -> Preset:
-        if preset.id is None:
-            # 新增
+        if not preset.id:
+            # 新增（id 为 None 或 0 都视为新增）
             cursor = await self._conn.execute(
                 """INSERT INTO presets (user_id, name, description, system_prompt,
                    is_builtin, created_at, updated_at)

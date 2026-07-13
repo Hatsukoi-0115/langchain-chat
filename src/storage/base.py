@@ -104,6 +104,11 @@ class StorageBackend(ABC):
     # ── 预设相关 ──────────────────────────────────────────────────────────
 
     @abstractmethod
+    async def get_preset_by_id(self, preset_id: int) -> Optional[Preset]:
+        """按 ID 查询单个预设（含内置和所有用户的自定义）。不存在返回 None。"""
+        ...
+
+    @abstractmethod
     async def save_preset(self, preset: Preset) -> Preset:
         """保存预设（新增或更新）。"""
         ...

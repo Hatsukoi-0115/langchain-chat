@@ -1,6 +1,6 @@
 """langchain-chat 程序总入口。
 
-Step 4 阶段：加载配置、初始化存储后端、启动 TUI 主界面。
+Step 5 阶段：加载配置、初始化存储后端、导入内置预设、启动 TUI 主界面。
 运行方式：uv run python src/main.py
 """
 
@@ -16,10 +16,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 async def async_main() -> None:
     """异步主函数。
 
-    启动流程（Step 4 起）：
+    启动流程（Step 5 起）：
         1. 加载配置（config_manager）
         2. 初始化存储后端（根据 config.storage_type 创建并 initialize）
-        3. 启动 TUI 主循环（把存储后端注入 TUIApp）
+        3. 导入系统内置预设（从 config/presets.yaml，幂等）
+        4. 启动 TUI 主循环（把存储后端注入 TUIApp）
     """
     # 1. 加载配置（触发单例创建，读取 .env 与 config.yaml）
     from core.config_manager import get_config
@@ -34,7 +35,16 @@ async def async_main() -> None:
     await backend.initialize()
     print(f"[启动] 存储后端已就绪: {type(backend).__name__}")
 
-    # 3. 启动 TUI 主循环（注入存储后端）
+    # 3. 导入系统内置预设（幂等，已存在的不会重复导入）
+    from core.preset_manager import PresetManager
+
+    # 导入预设并不是保存在 PresetManager 或 backend 实例中，而是 backend 指向的数据库
+    preset_manager = PresetManager(backend)
+    imported = await preset_manager.load_builtin_presets()
+    if imported > 0:
+        print(f"[启动] 导入了 {imported} 个系统内置预设")
+
+    # 4. 启动 TUI 主循环（注入存储后端）
     from ui.tui.app import TUIApp
 
     try:

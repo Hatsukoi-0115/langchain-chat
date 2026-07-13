@@ -10,12 +10,17 @@ Step 4 新增：
     - 实现用户管理子菜单（创建/列出/切换/删除）。
     - 维护当前登录用户状态。
 
+Step 5 新增：
+    - 持有 PresetManager。
+    - 实现预设管理子菜单（查看/新增/编辑/删除）。
+
 TUIApp 继承 AbstractUI，实现其全部抽象方法，满足 UI 接口契约。
 """
 
 import platform
 
 from core.config_manager import get_config
+from core.preset_manager import PresetManager
 from core.user_manager import UserManager
 from interface.ui_protocol import AbstractUI
 from storage.factory import StorageFactory
@@ -42,6 +47,15 @@ USER_MENU_OPTIONS = [
     "返回主菜单",
 ]
 
+# 预设管理子菜单选项
+PRESET_MENU_OPTIONS = [
+    "列出所有预设",
+    "新增自定义预设",
+    "编辑自定义预设",
+    "删除自定义预设",
+    "返回主菜单",
+]
+
 
 class TUIApp(AbstractUI):
     """TUI 主应用。
@@ -54,8 +68,10 @@ class TUIApp(AbstractUI):
         self.backend = backend
         # 业务管理器（backend 注入后初始化）
         self.user_manager: UserManager = None
+        self.preset_manager: PresetManager = None
         if backend is not None:
             self.user_manager = UserManager(backend)
+            self.preset_manager = PresetManager(backend)
 
         # 应用状态
         self.current_user = None          # 当前登录用户（User 对象或 None）
@@ -72,9 +88,9 @@ class TUIApp(AbstractUI):
         else:
             widgets.console.print(f"[dim][系统][/] {content}")
 
-    async def get_user_input(self, prompt_text: str = "") -> str:
+    async def get_user_input(self, prompt_text: str = "", default: str = "") -> str:
         """获取用户输入。"""
-        return widgets.read_text(prompt_text)
+        return widgets.read_text(prompt_text, default=default)
 
     async def display_menu(self, title: str, options: list[str]) -> int:
         """显示菜单并获取选择。"""
@@ -100,6 +116,13 @@ class TUIApp(AbstractUI):
             )
         else:
             widgets.console.print("[dim]当前用户: 未登录[/dim]")
+
+    def _require_login(self) -> bool:
+        """检查是否已登录。未登录则提示并返回 False。"""
+        if self.current_user is None:
+            widgets.print_warning("请先在用户管理中创建或切换用户")
+            return False
+        return True
 
     # ── 主循环 ────────────────────────────────────────────────────────────
 
@@ -128,7 +151,7 @@ class TUIApp(AbstractUI):
             elif choice == 1:
                 menu_view.show_session_menu()
             elif choice == 2:
-                menu_view.show_preset_menu()
+                await self._show_preset_menu()
             elif choice == 3:
                 await start_chat()
             elif choice == 4:
@@ -242,3 +265,160 @@ class TUIApp(AbstractUI):
 
         await self.user_manager.delete_user(user.id)
         widgets.print_success(f"用户 '{username}' 已删除（关联数据已自动清理）")
+
+    # ── 预设管理子菜单（Step 5 实现）──────────────────────────────────────
+
+    async def _show_preset_menu(self) -> None:
+        """预设管理子菜单。"""
+        if self.preset_manager is None:
+            widgets.print_error("预设管理未初始化（存储后端未注入）")
+            return
+
+        while True:
+            widgets.print_divider()
+            self._show_current_user()
+            choice = await self.display_menu("预设管理", PRESET_MENU_OPTIONS)
+
+            if choice == -1 or choice == 4:
+                # 返回主菜单
+                return
+            elif choice == 0:
+                await self._list_presets()
+            elif choice == 1:
+                await self._create_preset()
+            elif choice == 2:
+                await self._edit_preset()
+            elif choice == 3:
+                await self._delete_preset()
+
+    async def _list_presets(self) -> None:
+        """列出所有预设（内置 + 当前用户的自定义）。"""
+        # 查看预设不需要登录（内置预设是公开的）
+        if self.current_user:
+            presets = await self.preset_manager.list_presets(self.current_user.id)
+        else:
+            # 未登录只看内置
+            presets = await self.preset_manager.list_presets(0)
+
+        if not presets:
+            widgets.print_info("目前没有任何预设")
+            return
+
+        widgets.console.print("\n[bold]预设列表[/bold]")
+        for p in presets:
+            tag = "[内置]" if p.is_builtin else "[自定义]"
+            widgets.console.print(
+                f"  id={p.id}  {tag} [cyan]{p.name}[/cyan]"
+                f"  - {p.description}"
+            )
+        builtin_count = sum(1 for p in presets if p.is_builtin)
+        custom_count = len(presets) - builtin_count
+        widgets.print_info(f"共 {len(presets)} 个预设（内置 {builtin_count}，自定义 {custom_count}）")
+
+    async def _create_preset(self) -> None:
+        """新增自定义预设（D2）。"""
+        if not self._require_login():
+            return
+
+        name = await self.get_user_input("请输入预设名")
+        if not name:
+            widgets.print_warning("未输入预设名，取消创建")
+            return
+
+        description = await self.get_user_input("请输入预设描述（可选，回车跳过）")
+
+        system_prompt = await self.get_user_input("请输入系统提示词（定义 AI 角色）")
+        if not system_prompt:
+            widgets.print_warning("系统提示词不能为空，取消创建")
+            return
+
+        try:
+            preset = await self.preset_manager.create_preset(
+                user_id=self.current_user.id,
+                name=name,
+                description=description,
+                system_prompt=system_prompt,
+            )
+            widgets.print_success(f"预设创建成功: {preset.name}（id={preset.id}）")
+        except ValueError as e:
+            widgets.print_error(str(e))
+
+    async def _edit_preset(self) -> None:
+        """编辑自定义预设（D2）。"""
+        if not self._require_login():
+            return
+
+        # 先列出预设，让用户选
+        presets = await self.preset_manager.list_presets(self.current_user.id)
+        customs = [p for p in presets if not p.is_builtin]
+        if not customs:
+            widgets.print_info("你没有自定义预设，无法编辑（内置预设不允许修改）")
+            return
+
+        widgets.console.print("\n[bold]可编辑的自定义预设[/bold]")
+        for p in customs:
+            widgets.console.print(f"  id={p.id}  [cyan]{p.name}[/cyan]  - {p.description}")
+
+        preset_id_str = await self.get_user_input("请输入要编辑的预设 id")
+        try:
+            preset_id = int(preset_id_str)
+        except ValueError:
+            widgets.print_error("请输入有效的数字 id")
+            return
+
+        # 找到对应的预设
+        target = None
+        for p in customs:
+            if p.id == preset_id:
+                target = p
+                break
+        if target is None:
+            widgets.print_error(f"id={preset_id} 不在您的自定义预设中（或不存在）")
+            return
+
+        # 逐字段编辑（回车保留原值）
+        new_name = await self.get_user_input("预设名", default=target.name)
+        new_desc = await self.get_user_input("描述", default=target.description)
+        new_prompt = await self.get_user_input("系统提示词", default=target.system_prompt)
+
+        try:
+            await self.preset_manager.update_preset(
+                preset=target, name=new_name, description=new_desc, system_prompt=new_prompt
+            )
+            widgets.print_success(f"预设 '{new_name}' 已更新")
+        except ValueError as e:
+            widgets.print_error(str(e))
+
+    async def _delete_preset(self) -> None:
+        """删除自定义预设（D2）。"""
+        if not self._require_login():
+            return
+
+        presets = await self.preset_manager.list_presets(self.current_user.id)
+        customs = [p for p in presets if not p.is_builtin]
+        if not customs:
+            widgets.print_info("你没有自定义预设，无法删除（内置预设不允许删除）")
+            return
+
+        widgets.console.print("\n[bold]可删除的自定义预设[/bold]")
+        for p in customs:
+            widgets.console.print(f"  id={p.id}  [cyan]{p.name}[/cyan]  - {p.description}")
+
+        preset_id_str = await self.get_user_input("请输入要删除的预设 id")
+        try:
+            preset_id = int(preset_id_str)
+        except ValueError:
+            widgets.print_error("请输入有效的数字 id")
+            return
+
+        # 二次确认
+        confirm = await self.get_user_input(f"确认删除预设 id={preset_id}？输入 yes 确认")
+        if confirm.lower() != "yes":
+            widgets.print_info("已取消删除")
+            return
+
+        try:
+            await self.preset_manager.delete_preset(preset_id)
+            widgets.print_success(f"预设 id={preset_id} 已删除")
+        except ValueError as e:
+            widgets.print_error(str(e))

@@ -27,7 +27,7 @@ def print_banner(version: str, python_version: str) -> None:
     banner_text.append("LangChain Chat", style="bold cyan")
     banner_text.append(f"  v{version}", style="dim")
     banner_text.append(f"\nPython {python_version}", style="green")
-    banner_text.append("\n当前进度：Step 2  数据模型与 TUI 骨架", style="yellow")
+    banner_text.append("\n当前进度：Step 5  预设管理", style="yellow")
 
     console.print(Panel(banner_text, border_style="cyan", title="欢迎", title_align="left"))
 
@@ -95,12 +95,18 @@ def read_choice(max_choice: int) -> int:
             print_error("请输入数字")
 
 
-def read_text(prompt_text: str) -> str:
-    """读取用户输入的文本。
+def read_text(prompt_text: str, default: str = "") -> str:
+    """读取用户输入的文本，支持默认值（回车保留）。
 
     参数：
         prompt_text: 提示文字
+        default: 默认值。非空时会在提示中显示当前值，用户直接回车则返回默认值
     返回：
-        用户输入的文本（已去除首尾空白）
+        用户输入的文本（已去除首尾空白）；若用户回车且 default 非空，则返回 default
     """
-    return input(f"{prompt_text}: ").strip()
+    if default:
+        # 显示当前值，提示用户可回车保留
+        raw = input(f"{prompt_text}（当前: {default}，回车保留）: ").strip()
+        return raw if raw else default
+    else:
+        return input(f"{prompt_text}: ").strip()
