@@ -21,6 +21,7 @@ import platform
 
 from core.config_manager import get_config
 from core.preset_manager import PresetManager
+from core.session_manager import SessionManager
 from core.user_manager import UserManager
 from interface.ui_protocol import AbstractUI
 from storage.factory import StorageFactory
@@ -63,15 +64,22 @@ class TUIApp(AbstractUI):
     继承 AbstractUI 并实现其全部抽象方法。
     """
 
-    def __init__(self, backend=None) -> None:
+    def __init__(self, backend=None, engine=None, config=None) -> None:
         # 存储后端（由 main.py 注入）
         self.backend = backend
+        # 对话引擎（由 main.py 注入）
+        self.engine = engine
+        # 应用配置（由 main.py 注入）
+        self.config = config
         # 业务管理器（backend 注入后初始化）
         self.user_manager: UserManager = None
         self.preset_manager: PresetManager = None
+        self.session_manager: SessionManager = None
         if backend is not None:
             self.user_manager = UserManager(backend)
             self.preset_manager = PresetManager(backend)
+            if config is not None:
+                self.session_manager = SessionManager(backend, config)
 
         # 应用状态
         self.current_user = None          # 当前登录用户（User 对象或 None）
@@ -157,7 +165,7 @@ class TUIApp(AbstractUI):
             elif choice == 2:
                 await self._show_preset_menu()
             elif choice == 3:
-                await start_chat()
+                await start_chat(self)
             elif choice == 4:
                 menu_view.show_settings_menu()
             elif choice == 5:
@@ -208,6 +216,7 @@ class TUIApp(AbstractUI):
             # 创建后自动切换为当前用户（首次使用体验更好）
             if self.current_user is None:
                 self.current_user = user
+                self.current_session = None
                 widgets.print_info(f"已自动切换为当前用户: {user.username}")
         except ValueError as e:
             widgets.print_error(str(e))
@@ -242,6 +251,7 @@ class TUIApp(AbstractUI):
             return
 
         self.current_user = user
+        self.current_session = None    # 切换用户时清空当前会话（用户隔离）
         widgets.print_success(f"已切换到用户: {user.username}（id={user.id}）")
 
     async def _delete_user(self) -> None:

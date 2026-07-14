@@ -112,3 +112,34 @@ def read_text(prompt_text: str, default: str = "") -> str:
         return raw if raw else default
     else:
         return input(f"{prompt_text}: ").strip()
+
+async def read_chat_input(session=None) -> str:
+    """读取对话输入（使用 prompt_toolkit 异步版本，支持输入历史）。
+
+    与 read_text 的区别：
+        - read_text 用 input()，无历史、单行。
+
+    使用 PromptSession 的 prompt_async 方法（官方推荐的异步输入方式）。
+    必须用异步版本，因为对话循环在 async 环境里，
+    同步的 prompt() 会触发「asyncio.run() cannot be called from a running event loop」。
+
+    参数：
+        session: PromptSession 实例（含历史记录）。首次调用传 None，会自动创建。
+                 多次调用共享同一个 session，实现输入历史回看。
+    返回：
+        用户输入的文本（已去除首尾空白）
+    """
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.history import InMemoryHistory
+
+    # 首次调用时创建 session（绑定输入历史）
+    if session is None:
+        session = PromptSession(history=InMemoryHistory())
+
+    try:
+        # 用 prompt_async（异步版本），配合 await 使用
+        raw = await session.prompt_async("> ")
+        return raw.strip()
+    except (EOFError, KeyboardInterrupt):
+        # 用户按 Ctrl+D 或 Ctrl+C，视为退出对话
+        return "/exit"

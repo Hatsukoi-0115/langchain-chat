@@ -44,16 +44,23 @@ async def async_main() -> None:
     if imported > 0:
         print(f"[启动] 导入了 {imported} 个系统内置预设")
 
-    # 4. 启动 TUI 主循环（注入存储后端）
+    # 4. 创建对话引擎
+    from core.chat_engine import ChatEngine
+
+    engine = ChatEngine(config)
+    print(f"[启动] 对话引擎已就绪: {config.secret.MODEL_NAME}")
+
+    # 5. 启动 TUI 主循环（注入存储后端、引擎、配置）
     from ui.tui.app import TUIApp
 
     try:
-        app = TUIApp(backend=backend)
+        app = TUIApp(backend=backend, engine=engine, config=config)
         await app.run()
     finally:
-        # 无论正常退出还是异常，都关闭存储后端连接
+        # 无论正常退出还是异常，都关闭引擎和存储后端
+        await engine.close()
         await backend.close()
-        print("[启动] 存储后端已关闭")
+        print("[关闭] 对话引擎与存储后端已关闭")
 
 
 def main() -> None:

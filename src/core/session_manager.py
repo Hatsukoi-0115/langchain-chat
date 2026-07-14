@@ -1,0 +1,149 @@
+"""会话管理业务层。
+
+封装会话相关的业务逻辑：新建会话、保存消息、加载历史、生成标题。
+对应需求文档 C1（新建会话）、C6（自动保存）、C7（标题生成）。
+
+设计说明：
+    - SessionManager 通过依赖注入接收 StorageBackend，不直接操作数据库。
+    - 消息加载时，把数据库的 Message 转成 LangChain 的 BaseMessage（供 ChatEngine 使用）。
+    - 标题生成用 ChatEngine（LLM 摘要），失败时兜底截取前 30 字符。
+"""
+
+from typing import Optional
+
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+
+from core.config_manager import AppConfig
+from models.schemas import Message, Session
+from storage.base import StorageBackend
+
+
+class SessionManager:
+    """会话管理器。
+
+    通过传入的 StorageBackend 实例操作数据。
+    使用方式：
+        mgr = SessionManager(backend, config)
+        session = await mgr.create_session(user_id=1, model_name="deepseek-chat")
+    """
+
+    def __init__(self, backend: StorageBackend, config: AppConfig):
+        self.backend = backend
+        self.config = config
+
+    async def create_session(
+        self,
+        user_id: int,
+        model_name: str,
+        preset_id: Optional[int] = None,
+        title: str = "新会话",
+    ) -> Session:
+        """新建会话（C1）。
+
+        参数：
+            user_id: 所属用户 ID
+            model_name: 使用的模型名
+            preset_id: 使用的预设 ID（可选）
+            title: 会话标题（默认「新会话」，后续自动生成或手动修改）
+        返回：
+            创建后的 Session（含分配的 id）
+        """
+        session = Session(
+            id=0,
+            user_id=user_id,
+            title=title,
+            model_name=model_name,
+            preset_id=preset_id,
+        )
+        return await self.backend.create_session(session)
+
+    async def add_message(
+        self,
+        session: Session,
+        role: str,
+        content: str,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+    ) -> Message:
+        """保存一条消息并更新会话的 Token 统计（C6 自动保存）。
+
+        参数：
+            session: 所属会话（会被更新 Token 统计）
+            role: 消息角色（human / ai / system）
+            content: 消息内容
+            prompt_tokens: 本条输入 token 数
+            completion_tokens: 本条输出 token 数
+        返回：
+            创建后的 Message（含分配的 id）
+        """
+        message = Message(
+            id=0,
+            session_id=session.id,
+            role=role,
+            content=content,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
+        message = await self.backend.add_message(message)
+
+        # 更新会话的 Token 统计
+        session.total_prompt_tokens += prompt_tokens
+        session.total_completion_tokens += completion_tokens
+        await self.backend.update_session(session)
+
+        return message
+
+    async def load_messages_as_langchain(self, session_id: int) -> list[BaseMessage]:
+        """加载会话的历史消息，转成 LangChain 消息列表。
+
+        用于加载历史会话时，把数据库里的消息恢复成内存历史（供 ChatEngine 使用）。
+        """
+        messages = await self.backend.list_messages(session_id)
+        return [self._to_langchain_message(m) for m in messages]
+
+    async def generate_title(self, first_user_input: str, engine) -> str:
+        """用 LLM 生成会话标题（C7）。
+
+        参数：
+            first_user_input: 用户的第一轮输入
+            engine: ChatEngine 实例（用于调用 LLM）
+        返回：
+            生成的标题（10-20 字）。如果 LLM 调用失败，兜底截取前 30 字符。
+        """
+        title_prompt = [
+            SystemMessage(
+                content="请用 10-20 个字概括以下用户意图，作为对话标题。只输出标题，不要引号、不要其他内容。"
+            ),
+            HumanMessage(content=first_user_input),
+        ]
+        try:
+            title, _ = engine.chat(title_prompt)
+            # 清理：去掉可能的引号和换行
+            title = title.strip().strip('"\'「」""').strip()
+            # 限制长度
+            if len(title) > 30:
+                title = title[:30]
+            return title if title else self._fallback_title(first_user_input)
+        except Exception:
+            # LLM 调用失败，兜底截取
+            return self._fallback_title(first_user_input)
+
+    def _fallback_title(self, text: str) -> str:
+        """兜底标题：截取前 30 字符。"""
+        max_len = self.config.title_max_length
+        return text[:max_len] + ("..." if len(text) > max_len else "")
+
+    async def update_title(self, session: Session, new_title: str) -> None:
+        """修改会话标题（C4，对话中的 /rename 命令使用）。"""
+        session.title = new_title.strip()
+        await self.backend.update_session(session)
+
+    @staticmethod
+    def _to_langchain_message(message: Message) -> BaseMessage:
+        """把数据库的 Message 转成 LangChain 的消息类型。"""
+        if message.role == "human":
+            return HumanMessage(content=message.content)
+        elif message.role == "ai":
+            return AIMessage(content=message.content)
+        else:  # system
+            return SystemMessage(content=message.content)
