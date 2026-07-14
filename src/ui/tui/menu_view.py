@@ -20,8 +20,12 @@ def show_user_menu() -> None:
 
 
 def show_session_menu() -> None:
-    """会话管理菜单（桩）。Step 7/8 实现。"""
-    widgets.print_info("会话管理功能将在 Step 7、Step 8 实现")
+    """会话管理菜单。
+
+    注意：此函数在 Step 8 后不再被调用（app.py 改为调用 self._show_session_menu）。
+    保留是为了兼容性。会话管理功能已在 app.py 的 _show_session_menu 实现。
+    """
+    widgets.print_info("请通过主菜单的「会话管理」访问此功能")
     widgets.print_divider()
 
 

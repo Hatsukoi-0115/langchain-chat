@@ -138,6 +138,68 @@ class SessionManager:
         session.title = new_title.strip()
         await self.backend.update_session(session)
 
+    # ── 会话管理（Step 8 新增）──────────────────────────────────────────
+
+    async def list_sessions(self, user_id: int) -> list[Session]:
+        """列出指定用户的所有会话（C3 会话列表）。
+
+        按更新时间倒序排列（最近更新的在最前面）。
+
+        参数：
+            user_id: 用户 ID
+        返回：
+            该用户的所有会话列表（按 id 倒序，最新的在前）
+        """
+        return await self.backend.list_sessions(user_id)
+
+    async def get_session(self, session_id: int) -> Optional[Session]:
+        """按 ID 查询单个会话（C2 加载历史会话）。
+
+        参数：
+            session_id: 会话 ID
+        返回：
+            Session 对象，或 None（不存在）
+        """
+        return await self.backend.get_session(session_id)
+
+    async def rename_session(self, session_id: int, new_title: str) -> None:
+        """重命名会话（C4 会话重命名）。
+
+        参数：
+            session_id: 会话 ID
+            new_title: 新标题
+
+        异常：
+            ValueError: 标题为空 或 会话不存在
+        """
+        if not new_title or not new_title.strip():
+            raise ValueError("标题不能为空")
+        new_title = new_title.strip()
+
+        session = await self.backend.get_session(session_id)
+        if session is None:
+            raise ValueError(f"会话 id={session_id} 不存在")
+
+        session.title = new_title
+        await self.backend.update_session(session)
+
+    async def delete_session(self, session_id: int) -> None:
+        """删除会话及其所有消息（C5 删除会话）。
+
+        关联的消息靠数据库的 ON DELETE CASCADE 自动清理。
+
+        参数：
+            session_id: 会话 ID
+
+        异常：
+            ValueError: 会话不存在
+        """
+        session = await self.backend.get_session(session_id)
+        if session is None:
+            raise ValueError(f"会话 id={session_id} 不存在")
+
+        await self.backend.delete_session(session_id)
+
     @staticmethod
     def _to_langchain_message(message: Message) -> BaseMessage:
         """把数据库的 Message 转成 LangChain 的消息类型。"""

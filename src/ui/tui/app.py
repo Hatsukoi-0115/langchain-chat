@@ -57,6 +57,15 @@ PRESET_MENU_OPTIONS = [
     "返回主菜单",
 ]
 
+# 会话管理子菜单选项
+SESSION_MENU_OPTIONS = [
+    "查看会话列表",
+    "加载会话（设为当前）",
+    "重命名会话",
+    "删除会话",
+    "返回主菜单",
+]
+
 
 class TUIApp(AbstractUI):
     """TUI 主应用。
@@ -161,7 +170,7 @@ class TUIApp(AbstractUI):
             elif choice == 0:
                 await self._show_user_menu()
             elif choice == 1:
-                menu_view.show_session_menu()
+                await self._show_session_menu()
             elif choice == 2:
                 await self._show_preset_menu()
             elif choice == 3:
@@ -434,5 +443,177 @@ class TUIApp(AbstractUI):
         try:
             await self.preset_manager.delete_preset(preset_id)
             widgets.print_success(f"预设 id={preset_id} 已删除")
+        except ValueError as e:
+            widgets.print_error(str(e))
+
+    # ── 会话管理子菜单（Step 8 实现）──────────────────────────────────────
+
+    async def _show_session_menu(self) -> None:
+        """会话管理子菜单。"""
+        if self.session_manager is None:
+            widgets.print_error("会话管理未初始化（存储后端未注入）")
+            return
+
+        while True:
+            widgets.print_divider()
+            self._show_current_user()
+            choice = await self.display_menu("会话管理", SESSION_MENU_OPTIONS)
+
+            if choice == -1 or choice == 4:
+                # 返回主菜单
+                return
+            elif choice == 0:
+                await self._list_sessions()
+            elif choice == 1:
+                await self._load_session()
+            elif choice == 2:
+                await self._rename_session()
+            elif choice == 3:
+                await self._delete_session()
+
+    async def _list_sessions(self) -> None:
+        """查看会话列表（C3）。"""
+        if not self._require_login():
+            return
+
+        sessions = await self.session_manager.list_sessions(self.current_user.id)
+        if not sessions:
+            widgets.print_info("目前没有任何会话")
+            return
+
+        widgets.console.print("\n[bold]会话列表[/bold]")
+        for i, s in enumerate(sessions, start=1):
+            # 标记当前会话
+            mark = " <- 当前" if (self.current_session and s.id == self.current_session.id) else ""
+            # 格式化时间（只显示日期和时分）
+            created = s.created_at.strftime("%Y-%m-%d %H:%M")
+            updated = s.updated_at.strftime("%Y-%m-%d %H:%M")
+            total_tokens = s.total_prompt_tokens + s.total_completion_tokens
+            widgets.console.print(
+                f"  {i}. [cyan]{s.title}[/cyan]{mark}"
+            )
+            widgets.console.print(
+                f"     模型: {s.model_name}  |  创建: {created}  |  更新: {updated}  |  Token: {total_tokens}"
+            )
+        widgets.print_info(f"共 {len(sessions)} 个会话")
+
+    async def _load_session(self) -> None:
+        """加载会话（设为当前会话，C2）。"""
+        if not self._require_login():
+            return
+
+        sessions = await self.session_manager.list_sessions(self.current_user.id)
+        if not sessions:
+            widgets.print_info("目前没有任何会话，无法加载")
+            return
+
+        # 显示列表供选择
+        widgets.console.print("\n[bold]选择要加载的会话[/bold]")
+        for i, s in enumerate(sessions, start=1):
+            widgets.console.print(f"  {i}. {s.title}")
+        widgets.console.print("  0. 取消")
+
+        choice_str = widgets.read_text("请输入序号")
+        try:
+            choice = int(choice_str)
+        except ValueError:
+            widgets.print_error("请输入有效的数字")
+            return
+
+        if choice == 0:
+            widgets.print_info("已取消")
+            return
+        if not (1 <= choice <= len(sessions)):
+            widgets.print_error("序号超出范围")
+            return
+
+        selected = sessions[choice - 1]
+        self.current_session = selected
+        widgets.print_success(f"已加载会话: {selected.title}（id={selected.id}）")
+        widgets.print_info("选择「开始对话」可继续此会话")
+
+    async def _rename_session(self) -> None:
+        """重命名会话（C4）。"""
+        if not self._require_login():
+            return
+
+        sessions = await self.session_manager.list_sessions(self.current_user.id)
+        if not sessions:
+            widgets.print_info("目前没有任何会话，无法重命名")
+            return
+
+        # 显示列表供选择
+        widgets.console.print("\n[bold]选择要重命名的会话[/bold]")
+        for i, s in enumerate(sessions, start=1):
+            widgets.console.print(f"  {i}. {s.title}")
+
+        choice_str = widgets.read_text("请输入序号")
+        try:
+            choice = int(choice_str)
+        except ValueError:
+            widgets.print_error("请输入有效的数字")
+            return
+
+        if not (1 <= choice <= len(sessions)):
+            widgets.print_error("序号超出范围")
+            return
+
+        selected = sessions[choice - 1]
+        new_title = widgets.read_text("请输入新标题", default=selected.title)
+        if not new_title:
+            widgets.print_warning("标题不能为空")
+            return
+
+        try:
+            await self.session_manager.rename_session(selected.id, new_title)
+            widgets.print_success(f"会话已重命名为: {new_title}")
+            # 如果改的是当前会话，更新 current_session 的标题
+            if self.current_session and selected.id == self.current_session.id:
+                self.current_session.title = new_title
+        except ValueError as e:
+            widgets.print_error(str(e))
+
+    async def _delete_session(self) -> None:
+        """删除会话（C5），需二次确认。"""
+        if not self._require_login():
+            return
+
+        sessions = await self.session_manager.list_sessions(self.current_user.id)
+        if not sessions:
+            widgets.print_info("目前没有任何会话，无法删除")
+            return
+
+        # 显示列表供选择
+        widgets.console.print("\n[bold]选择要删除的会话[/bold]")
+        for i, s in enumerate(sessions, start=1):
+            mark = " <- 当前" if (self.current_session and s.id == self.current_session.id) else ""
+            widgets.console.print(f"  {i}. {s.title}{mark}")
+
+        choice_str = widgets.read_text("请输入序号")
+        try:
+            choice = int(choice_str)
+        except ValueError:
+            widgets.print_error("请输入有效的数字")
+            return
+
+        if not (1 <= choice <= len(sessions)):
+            widgets.print_error("序号超出范围")
+            return
+
+        selected = sessions[choice - 1]
+
+        # 二次确认
+        confirm = await self.get_user_input(f"确认删除会话 '{selected.title}'？此操作不可恢复。输入 yes 确认")
+        if confirm.lower() != "yes":
+            widgets.print_info("已取消删除")
+            return
+
+        try:
+            await self.session_manager.delete_session(selected.id)
+            widgets.print_success(f"会话 '{selected.title}' 已删除（含全部消息）")
+            # 如果删的是当前会话，清空 current_session
+            if self.current_session and selected.id == self.current_session.id:
+                self.current_session = None
+                widgets.print_info("已清空当前会话（因为删除的就是当前会话）")
         except ValueError as e:
             widgets.print_error(str(e))

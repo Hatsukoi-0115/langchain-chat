@@ -39,7 +39,7 @@ async def start_chat(app) -> None:
 
     # 3.1 如果当前没有会话，先查数据库有没有历史会话
     if session is None:
-        sessions = await app.session_manager.backend.list_sessions(app.current_user.id)
+        sessions = await app.session_manager.list_sessions(app.current_user.id)
         if sessions:
             # 有历史会话，让用户选择「继续最近的」还是「新建」
             widgets.console.print(f"\n[bold]最近会话:[/bold] {sessions[0].title}")
