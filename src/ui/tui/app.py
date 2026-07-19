@@ -34,6 +34,7 @@ MAIN_MENU_OPTIONS = [
     "会话管理",
     "预设管理",
     "开始对话",
+    "搜索对话",
     "设置",
     "关于",
     "退出",
@@ -63,6 +64,7 @@ SESSION_MENU_OPTIONS = [
     "加载会话（设为当前）",
     "重命名会话",
     "删除会话",
+    "查看会话记录",
     "返回主菜单",
 ]
 
@@ -176,10 +178,12 @@ class TUIApp(AbstractUI):
             elif choice == 3:
                 await start_chat(self)
             elif choice == 4:
-                menu_view.show_settings_menu()
+                await self._search_messages()
             elif choice == 5:
-                menu_view.show_about()
+                menu_view.show_settings_menu()
             elif choice == 6:
+                menu_view.show_about()
+            elif choice == 7:
                 # 退出
                 widgets.print_info("感谢使用，再见。")
                 break
@@ -219,7 +223,7 @@ class TUIApp(AbstractUI):
             # 默认模型用配置里的默认值
             config = get_config()
             user = await self.user_manager.create_user(
-                username, default_model=config.default_model
+                username, default_model=config.secret.MODEL_NAME
             )
             widgets.print_success(f"用户创建成功: {user.username}（id={user.id}）")
             # 创建后自动切换为当前用户（首次使用体验更好）
@@ -459,7 +463,7 @@ class TUIApp(AbstractUI):
             self._show_current_user()
             choice = await self.display_menu("会话管理", SESSION_MENU_OPTIONS)
 
-            if choice == -1 or choice == 4:
+            if choice == -1 or choice == 5:
                 # 返回主菜单
                 return
             elif choice == 0:
@@ -470,6 +474,8 @@ class TUIApp(AbstractUI):
                 await self._rename_session()
             elif choice == 3:
                 await self._delete_session()
+            elif choice == 4:
+                await self._view_session_messages()
 
     async def _list_sessions(self) -> None:
         """查看会话列表（C3）。"""
@@ -617,3 +623,108 @@ class TUIApp(AbstractUI):
                 widgets.print_info("已清空当前会话（因为删除的就是当前会话）")
         except ValueError as e:
             widgets.print_error(str(e))
+
+    # ── 会话记录查看与搜索（Step 9 实现）──────────────────────────────────
+
+    async def _view_session_messages(self) -> None:
+        """查看指定会话的全部聊天记录。"""
+        if not self._require_login():
+            return
+
+        sessions = await self.session_manager.list_sessions(self.current_user.id)
+        if not sessions:
+            widgets.print_info("目前没有任何会话，无法查看记录")
+            return
+
+        # 显示会话列表供选择
+        widgets.console.print("\n[bold]选择要查看的会话[/bold]")
+        for i, s in enumerate(sessions, start=1):
+            widgets.console.print(f"  {i}. {s.title}")
+        widgets.console.print("  0. 取消")
+
+        choice_str = widgets.read_text("请输入序号")
+        try:
+            choice = int(choice_str)
+        except ValueError:
+            widgets.print_error("请输入有效的数字")
+            return
+
+        if choice == 0:
+            widgets.print_info("已取消")
+            return
+        if not (1 <= choice <= len(sessions)):
+            widgets.print_error("序号超出范围")
+            return
+
+        selected = sessions[choice - 1]
+
+        # 获取该会话的全部消息
+        messages = await self.session_manager.get_session_messages(selected.id)
+        if not messages:
+            widgets.print_info(f"会话 '{selected.title}' 没有任何消息")
+            return
+
+        # 显示消息记录
+        widgets.console.print(f"\n[bold]会话记录：{selected.title}（id={selected.id}）[/bold]")
+        widgets.print_divider()
+        for msg in messages:
+            if msg.role == "human":
+                role_label = "[bold cyan][你][/]  "
+            elif msg.role == "ai":
+                role_label = "[bold green][AI][/] "
+            else:
+                role_label = "[dim][系统][/] "
+            # 消息内容可能很长，直接显示
+            widgets.console.print(f"{role_label}{msg.content}")
+        widgets.print_divider()
+
+        # 统计
+        total = len(messages)
+        total_tokens = selected.total_prompt_tokens + selected.total_completion_tokens
+        widgets.print_info(f"共 {total} 条消息  |  累计 Token: {total_tokens}")
+
+    async def _search_messages(self) -> None:
+        """搜索对话（E1）：在当前用户的所有会话中按关键词搜索。"""
+        if not self._require_login():
+            return
+
+        keyword = await self.get_user_input("请输入搜索关键词")
+        if not keyword:
+            widgets.print_warning("未输入关键词，取消搜索")
+            return
+
+        # 执行搜索
+        results = await self.session_manager.search_messages(self.current_user.id, keyword)
+
+        if not results:
+            widgets.print_info(f"未找到包含「{keyword}」的消息")
+            return
+
+        # 获取所有涉及的会话（用于显示会话标题）
+        sessions = await self.session_manager.list_sessions(self.current_user.id)
+        session_map = {s.id: s for s in sessions}  # {session_id: Session}
+
+        # 按 session_id 分组显示
+        widgets.console.print(f"\n[bold]搜索「{keyword}」的结果（{len(results)} 条匹配）[/bold]")
+        widgets.print_divider()
+
+        current_session_id = None
+        for msg in results:
+            # 如果进入了新会话，先显示会话标题（不重复输出同一个会话标题）
+            if msg.session_id != current_session_id:
+                current_session_id = msg.session_id
+                session = session_map.get(msg.session_id)
+                title = session.title if session else f"会话id={msg.session_id}"
+                widgets.console.print(f"\n[bold yellow]── 会话: {title} ──[/bold yellow]")
+
+            # 显示消息
+            if msg.role == "human":
+                role_label = "[bold cyan][你][/]  "
+            elif msg.role == "ai":
+                role_label = "[bold green][AI][/] "
+            else:
+                role_label = "[dim][系统][/] "
+            widgets.console.print(f"{role_label}{msg.content}")
+
+        widgets.print_divider()
+        widgets.print_info(f"共 {len(results)} 条匹配，涉及会话 {len(set(m.session_id for m in results))} 个")

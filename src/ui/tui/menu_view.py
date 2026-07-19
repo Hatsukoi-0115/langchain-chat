@@ -52,6 +52,6 @@ def show_about() -> None:
     widgets.console.print(
         "\n[bold cyan]LangChain Chat[/bold cyan]  "
         "基于 LangChain 的多轮会话系统（教学项目）\n"
-        "[dim]按步骤开发中，当前进度：Step 2  TUI 骨架[/dim]\n"
+        "[dim]按步骤开发中[/dim]\n"
     )
     widgets.print_divider()

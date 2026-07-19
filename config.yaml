@@ -10,7 +10,7 @@
 app:
   name: langchain-chat
   version: 0.1.0
-  current_step: "Step 8  会话管理完善"   # 当前进度（横幅显示，方案 B：从配置读取，不再写死在代码里）
+  current_step: "Step 9  对话搜索"   # 当前进度（横幅显示，方案 B：从配置读取，不再写死在代码里）
   # env: dev   # 多环境预留，Step 15 启用
 
 # 模型配置（API_BASE_URL/API_KEY/MODEL_NAME 真实值在 .env 中）
