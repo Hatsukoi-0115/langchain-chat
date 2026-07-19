@@ -138,6 +138,16 @@ class SessionManager:
         session.title = new_title.strip()
         await self.backend.update_session(session)
 
+    @staticmethod
+    def _to_langchain_message(message: Message) -> BaseMessage:
+        """把数据库的 Message 转成 LangChain 的消息类型。"""
+        if message.role == "human":
+            return HumanMessage(content=message.content)
+        elif message.role == "ai":
+            return AIMessage(content=message.content)
+        else:  # system
+            return SystemMessage(content=message.content)
+
     # ── 会话管理（Step 8 新增）──────────────────────────────────────────
 
     async def list_sessions(self, user_id: int) -> list[Session]:
@@ -199,13 +209,3 @@ class SessionManager:
             raise ValueError(f"会话 id={session_id} 不存在")
 
         await self.backend.delete_session(session_id)
-
-    @staticmethod
-    def _to_langchain_message(message: Message) -> BaseMessage:
-        """把数据库的 Message 转成 LangChain 的消息类型。"""
-        if message.role == "human":
-            return HumanMessage(content=message.content)
-        elif message.role == "ai":
-            return AIMessage(content=message.content)
-        else:  # system
-            return SystemMessage(content=message.content)
