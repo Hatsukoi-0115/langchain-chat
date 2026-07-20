@@ -158,6 +158,16 @@ class SQLiteBackend(StorageBackend):
         await self._conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
         await self._conn.commit()
 
+    async def update_user(self, user: User) -> None:
+        """更新用户信息。"""
+        await self._conn.execute(
+            """UPDATE users SET username=?, default_model=?, default_preset_id=?,
+               updated_at=? WHERE id=?""",
+            (user.username, user.default_model, user.default_preset_id,
+             self._dt_to_str(user.updated_at), user.id),
+        )
+        await self._conn.commit()
+
     @staticmethod
     def _row_to_user(row: aiosqlite.Row) -> User:
         return User(

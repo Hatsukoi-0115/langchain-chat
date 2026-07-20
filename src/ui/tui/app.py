@@ -65,6 +65,14 @@ SESSION_MENU_OPTIONS = [
     "重命名会话",
     "删除会话",
     "查看会话记录",
+    "导出为 Markdown",
+    "返回主菜单",
+]
+
+# 设置子菜单选项
+SETTINGS_MENU_OPTIONS = [
+    "查看当前模型",
+    "切换默认模型",
     "返回主菜单",
 ]
 
@@ -180,7 +188,7 @@ class TUIApp(AbstractUI):
             elif choice == 4:
                 await self._search_messages()
             elif choice == 5:
-                menu_view.show_settings_menu()
+                await self._show_settings_menu()
             elif choice == 6:
                 menu_view.show_about()
             elif choice == 7:
@@ -223,7 +231,7 @@ class TUIApp(AbstractUI):
             # 默认模型用配置里的默认值
             config = get_config()
             user = await self.user_manager.create_user(
-                username, default_model=config.secret.MODEL_NAME
+                username, default_model=config.default_model
             )
             widgets.print_success(f"用户创建成功: {user.username}（id={user.id}）")
             # 创建后自动切换为当前用户（首次使用体验更好）
@@ -463,7 +471,7 @@ class TUIApp(AbstractUI):
             self._show_current_user()
             choice = await self.display_menu("会话管理", SESSION_MENU_OPTIONS)
 
-            if choice == -1 or choice == 5:
+            if choice == -1 or choice == 6:
                 # 返回主菜单
                 return
             elif choice == 0:
@@ -476,6 +484,8 @@ class TUIApp(AbstractUI):
                 await self._delete_session()
             elif choice == 4:
                 await self._view_session_messages()
+            elif choice == 5:
+                await self._export_session()
 
     async def _list_sessions(self) -> None:
         """查看会话列表（C3）。"""
@@ -728,3 +738,108 @@ class TUIApp(AbstractUI):
 
         widgets.print_divider()
         widgets.print_info(f"共 {len(results)} 条匹配，涉及会话 {len(set(m.session_id for m in results))} 个")
+
+    # ── 设置菜单与全局模型切换（Step 10 实现）────────────────────────────
+
+    async def _show_settings_menu(self) -> None:
+        """设置子菜单。"""
+        while True:
+            widgets.print_divider()
+            self._show_current_user()
+            choice = await self.display_menu("设置", SETTINGS_MENU_OPTIONS)
+
+            if choice == -1 or choice == 2:
+                # 返回主菜单
+                return
+            elif choice == 0:
+                await self._view_current_model()
+            elif choice == 1:
+                await self._switch_default_model()
+
+    async def _view_current_model(self) -> None:
+        """查看当前使用的模型。"""
+        config = get_config()
+        widgets.console.print(f"\n[bold]当前默认模型:[/bold] {config.default_model}")
+        provider = config.find_provider_by_model(config.default_model)
+        if provider:
+            widgets.console.print(f"[bold]所属服务商:[/bold] {provider['name']}")
+        widgets.console.print("\n[bold]所有可用模型:[/bold]")
+        for m in config.get_all_models():
+            current = " <- 当前" if m["value"] == config.default_model else ""
+            widgets.console.print(f"  {m['name']}（{m['value']}）[{m['provider']}]{current}")
+
+    async def _switch_default_model(self) -> None:
+        """切换全局默认模型。"""
+        if not self._require_login():
+            return
+
+        config = get_config()
+        models = config.get_all_models()
+        if not models:
+            widgets.print_info("没有可选模型")
+            return
+
+        widgets.console.print("\n[bold]选择新的默认模型[/bold]")
+        for i, m in enumerate(models, start=1):
+            current = " <- 当前" if m["value"] == config.default_model else ""
+            widgets.console.print(f"  {i}. {m['name']}（{m['value']}）[{m['provider']}]{current}")
+
+        choice_str = widgets.read_text("请输入序号")
+        try:
+            choice = int(choice_str)
+        except ValueError:
+            widgets.print_error("请输入有效的数字")
+            return
+
+        if not (1 <= choice <= len(models)):
+            widgets.print_error("序号超出范围")
+            return
+
+        selected = models[choice - 1]
+        new_model = selected["value"]
+
+        # 更新用户的 default_model
+        self.current_user.default_model = new_model
+        await self.user_manager.update_user(self.current_user)
+        # 切换引擎的默认模型
+        if self.engine:
+            self.engine.switch_model(new_model)
+
+        widgets.print_success(f"默认模型已切换为: {selected['name']}（{new_model}）")
+        widgets.print_info("新创建的会话将使用此模型")
+
+    # ── 导出（Step 10 实现）─────────────────────────────────────────────
+
+    async def _export_session(self) -> None:
+        """导出会话为 Markdown 文件（F1/F2）。"""
+        if not self._require_login():
+            return
+
+        sessions = await self.session_manager.list_sessions(self.current_user.id)
+        if not sessions:
+            widgets.print_info("目前没有任何会话，无法导出")
+            return
+
+        widgets.console.print("\n[bold]选择要导出的会话[/bold]")
+        for i, s in enumerate(sessions, start=1):
+            widgets.console.print(f"  {i}. {s.title}")
+
+        choice_str = widgets.read_text("请输入序号")
+        try:
+            choice = int(choice_str)
+        except ValueError:
+            widgets.print_error("请输入有效的数字")
+            return
+
+        if not (1 <= choice <= len(sessions)):
+            widgets.print_error("序号超出范围")
+            return
+
+        selected = sessions[choice - 1]
+        try:
+            file_path = await self.session_manager.export_to_markdown(
+                selected.id, self.current_user.username
+            )
+            widgets.print_success(f"会话已导出: {file_path}")
+        except ValueError as e:
+            widgets.print_error(str(e))

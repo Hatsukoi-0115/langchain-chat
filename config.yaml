@@ -10,19 +10,43 @@
 app:
   name: langchain-chat
   version: 0.1.0
-  current_step: "Step 9  对话搜索"   # 当前进度（横幅显示，方案 B：从配置读取，不再写死在代码里）
+  current_step: "Step 10  导出与模型切换"   # 当前进度（横幅显示，方案 B：从配置读取，不再写死在代码里）
   # env: dev   # 多环境预留，Step 15 启用
 
-# 模型配置（API_BASE_URL/API_KEY/MODEL_NAME 真实值在 .env 中）
-models:
-  default: deepseek-chat
-  available:
-    - name: DeepSeek Chat
-      value: deepseek-chat
-    - name: DeepSeek Reasoner
-      value: deepseek-reasoner
-  temperature: 0.7
-  max_tokens: 2048
+# 模型服务商配置（多服务商分组）
+# 每个服务商有自己的 base_url 和 api_key（Key 存 .env，这里只写变量名）。
+# 以后增加模型/服务商的操作见 Step 10 文档第三章 3.1 节。
+
+# value必须唯一！！！否则config_manager.py的find_provider_by_model会返回第一个匹配的provider，导致切换模型失败。
+providers:
+  - name: 通义千问
+    base_url: https://llm-jm403wwr82zc6d86.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+    api_key_env: QWEN_API_KEY
+    models:
+      - name: 通义千问 Flash
+        value: qwen3.6-flash
+      - name: 通义千问 Max
+        value: qwen3.6-max-preview
+
+  - name: DeepSeek
+    base_url: https://api.deepseek.com
+    api_key_env: DEEPSEEK_API_KEY
+    models:
+      - name: DeepSeek V4 Pro
+        value: deepseek-v4-pro
+      - name: DeepSeek V4 Flash
+        value: deepseek-v4-flash
+
+  - name: OpenAI 代理
+    base_url: https://sooapi.com/v1
+    api_key_env: OPENAI_API_KEY
+    models:
+      - name: gpt-5.4-mini
+        value: gpt-5.4-mini
+
+# 生成参数（所有模型共用）
+temperature: 0.7
+max_tokens: 2048
 
 # 存储配置
 storage:

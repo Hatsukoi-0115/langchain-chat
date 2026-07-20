@@ -48,7 +48,7 @@ async def async_main() -> None:
     from core.chat_engine import ChatEngine
 
     engine = ChatEngine(config)
-    print(f"[启动] 对话引擎已就绪: {config.secret.MODEL_NAME}")
+    print(f"[启动] 对话引擎已就绪: {config.default_model}")
 
     # 5. 启动 TUI 主循环（注入存储后端、引擎、配置）
     from ui.tui.app import TUIApp

@@ -57,6 +57,11 @@ class StorageBackend(ABC):
         """删除用户及其所有关联数据（会话、消息、预设、配置）。"""
         ...
 
+    @abstractmethod
+    async def update_user(self, user: User) -> None:
+        """更新用户信息（如 default_model）。"""
+        ...
+
     # ── 会话相关 ──────────────────────────────────────────────────────────
 
     @abstractmethod

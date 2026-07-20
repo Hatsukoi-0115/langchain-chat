@@ -196,7 +196,7 @@ async def _create_new_session(app) -> None:
     config = app.config
     session = await app.session_manager.create_session(
         user_id=app.current_user.id,
-        model_name=config.secret.MODEL_NAME,
+        model_name=config.default_model,
         preset_id=preset_id,
     )
     widgets.print_success(f"新会话已创建（id={session.id}）")
@@ -275,11 +275,56 @@ async def _handle_command(app, session, command: str) -> str:
             widgets.print_warning("标题不能为空")
         return None
 
+    elif cmd == "/model":
+        # 模型切换（A5 会话内切换）
+        if len(parts) < 2:
+            # 没有指定模型，列出可选模型和当前模型
+            config = app.config
+            widgets.console.print(f"\n[bold]当前模型:[/bold] {app.engine.current_model}")
+            widgets.console.print("[bold]可选模型:[/bold]")
+            models = config.get_all_models()
+            for i, m in enumerate(models, start=1):
+                current = " <- 当前" if m["value"] == app.engine.current_model else ""
+                widgets.console.print(f"  {i}. {m['name']}（{m['value']}）[{m['provider']}]{current}")
+            widgets.console.print("用法: /model 模型名 或 /model 序号\n")
+        else:
+            # 用户指定了模型名或序号
+            arg = parts[1].strip()
+            models = app.config.get_all_models()
+
+            # 判断是序号还是模型名
+            target_model = None
+            try:
+                num = int(arg)
+                if 1 <= num <= len(models):
+                    target_model = models[num - 1]
+            except ValueError:
+                # 不是数字，按模型名匹配
+                for m in models:
+                    if m["value"] == arg or m["name"] == arg:
+                        target_model = m
+                        break
+
+            if target_model is None:
+                widgets.print_warning(f"未找到模型: {arg}（输入 /model 查看可选列表）")
+            else:
+                try:
+                    app.engine.switch_model(target_model["value"])
+                    # 更新会话记录的模型名
+                    session.model_name = target_model["value"]
+                    await app.session_manager.backend.update_session(session)
+                    widgets.print_success(f"模型已切换为: {target_model['name']}（{target_model['value']}）")
+                    widgets.print_info("历史上下文已保留，继续对话将使用新模型")
+                except ValueError as e:
+                    widgets.print_error(str(e))
+        return None
+
     elif cmd == "/help":
         widgets.console.print("\n[bold]可用命令[/bold]")
         widgets.console.print("  /exit         退出对话，返回主菜单")
         widgets.console.print("  /new          新建会话（选预设、清空上下文）")
         widgets.console.print("  /rename 标题  修改当前会话标题")
+        widgets.console.print("  /model        查看/切换模型")
         widgets.console.print("  /help         显示本帮助")
         widgets.console.print("  其他文字      发给 LLM 对话\n")
         return None

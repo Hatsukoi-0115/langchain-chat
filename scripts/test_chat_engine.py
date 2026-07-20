@@ -99,10 +99,11 @@ async def test_error_handling(engine: ChatEngine) -> None:
     """测试 6：错误处理（用错误的模型名触发错误）。"""
     print("[测试 6] 错误处理（错误的模型名）")
     from langchain_openai import ChatOpenAI
+    provider = engine.config.find_provider_by_model(engine.current_model)
     bad_llm = ChatOpenAI(
         model="this-model-does-not-exist",
-        api_key=engine.config.secret.API_KEY,
-        base_url=engine.config.secret.API_BASE_URL,
+        api_key=engine.config.get_api_key(provider["api_key_env"]),
+        base_url=provider["base_url"],
         timeout=10,
         max_retries=1,
     )
@@ -122,9 +123,15 @@ async def main():
 
     # 加载配置
     config = get_config()
-    print(f"API 地址: {config.secret.API_BASE_URL}")
-    print(f"模型:     {config.secret.MODEL_NAME}")
-    print(f"API Key:  {config.secret.API_KEY[:8]}...")
+    print(f"默认模型: {config.default_model}")
+    provider = config.find_provider_by_model(config.default_model)
+    if provider:
+        print(f"服务商:   {provider['name']}")
+        api_key = config.get_api_key(provider["api_key_env"])
+        print(f"API Key:  {api_key[:8]}..." if api_key else "API Key:  未配置")
+    else:
+        print("错误: 默认模型不在 providers 列表中")
+        return
     print()
 
     # 检查 API Key 是否已配置

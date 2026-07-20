@@ -36,8 +36,11 @@ def show_preset_menu() -> None:
 
 
 def show_settings_menu() -> None:
-    """设置菜单（桩）。Step 10 实现。"""
-    widgets.print_info("设置功能将在 Step 10 实现")
+    """设置菜单。
+
+    注意：此函数在 Step 10 后不再被调用（app.py 改为调用 self._show_settings_menu）。
+    """
+    widgets.print_info("请通过主菜单的「设置」访问此功能")
     widgets.print_divider()
 
 
